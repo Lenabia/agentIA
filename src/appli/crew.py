@@ -1,4 +1,5 @@
 from crewai import Agent, Task, Crew, Process, LLM
+import os
 
 
 class Appli:
@@ -10,35 +11,37 @@ class Appli:
     """
 
     def __init__(self) -> None:
-        # LLM Ollama Mistral, temp=0 pour plus de déterminisme des réponses
-        self.llm = LLM(model="ollama/mistral:7b", temperature=0)
+        # Modèle lu depuis l'environnement (fallback sur gemma3:1b)
+        model_name = os.getenv("MODEL", "ollama/gemma3:1b")
+        self.llm = LLM(model=model_name, temperature=0)
 
     def crew(self) -> Crew:
         of_agent = Agent(
             role="Assistant OF interne",
             goal=(
-                "Répondre précisément aux questions sur un OF en s'appuyant uniquement "
+                "Répondre précisément aux questions sur un OF en s'appuyant uniquement sur le contexte fourni."
+                "Français uniquement."
+                "Ne répète pas la phrase de description"
                 "sur le contexte fourni (données internes issues du CSV)."
             ),
             backstory=(
                 "Assistant interne spécialisé dans la lecture de données de suivi OF. "
-                "Il ne fabrique pas d'informations en dehors du contexte fourni."
+            
             ),
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
             llm=self.llm,
         )
 
         of_task = Task(
             description=(
-                "Réponds à la question utilisateur: {question} en te basant uniquement "
-                "sur le contexte de l'OF suivant: {of_context}. Si une information est "
-                "absente du contexte, indique-le clairement. Fournis une réponse courte, "
-                "claire et actionnable. Réponds en français uniquement."
+                "Réponds à {question} uniquement avec les infos de {of_context}. "
+                "Réponds en Français, concis, précis, sans phrases inutiles."
+
+               
             ),
             expected_output=(
-                "Une réponse structurée et fidèle aux données du contexte, listant les "
-                "champs clés (date, statuts, remarques, référence, conformité) si présents."
+                "Réponse brève en langage naturel, fidèle aux infos disponibles et pertinentes, sans format clé: valeur ni tableau. et pas besoin de répéter cette phrase"
             ),
             agent=of_agent,
         )
@@ -46,6 +49,6 @@ class Appli:
         return Crew(
             agents=[of_agent],
             tasks=[of_task],
-            verbose=True,
+            verbose=False,
             process=Process.sequential,
         )

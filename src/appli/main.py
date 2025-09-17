@@ -4,6 +4,10 @@ import warnings
 
 from datetime import datetime
 
+# au tout début de ton appli (ex: main.py)
+from dotenv import load_dotenv
+load_dotenv()
+
 from appli.crew import Appli
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
