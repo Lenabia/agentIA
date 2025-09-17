@@ -1,56 +1,51 @@
 from crewai import Agent, Task, Crew, Process, LLM
-from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
-from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
 
-pdf_source = PDFKnowledgeSource(
-    file_paths= ["docaresumer.pdf"]
-)
-# Create a knowledge source
-content = 'Users name is John he lives in San Francisco and he is 30 years old.'
-string_source = StringKnowledgeSource(content=content)
-# Create an LLM with a temperature of 0 to ensure deterministic output
-llm = LLM(model="ollama/mistral:7b", temperature=0)
-# Create an agent with the knowledge store
-agent = Agent(
-    role="Resume",
-    goal="Tu es un expert en résumé de documents.",
-    backstory="Tu a 20 d'expérience dans le résumé de documents.",
-    verbose=True,
-    allow_delegation=False,
-    llm=llm,
-    knowledge_sources=[pdf_source],
-    embedder={"provider": "ollama", "config": {"model": "mxbai-embed-large"}}  # embedder pour vectoriser le knowledge
 
-)
+class Appli:
+    """Fabrique une crew minimale adaptée au chatbot OF.
 
-agent_traducteur = Agent(
-    role= "Traducteur",
-    goal="Tu es un expert en traduction.",
-    backstory="Tu a 20 d'expérience dans la traduction.",
-    verbose=True,
-    allow_delegation=False,
-    llm=llm,
-)
-    
+    Inputs attendus à l'exécution:
+    - question: texte de l'utilisateur
+    - of_context: texte construit à partir de la ligne CSV de l'OF
+    """
 
-task = Task(
-    description="résume le document en 100 mots",
-    expected_output="Le résumé du texte du document.",
-    agent=agent,
-)
+    def __init__(self) -> None:
+        # LLM Ollama Mistral, temp=0 pour plus de déterminisme des réponses
+        self.llm = LLM(model="ollama/mistral:7b", temperature=0)
 
-task = Task(
-    description="traduit le document en français",
-    expected_output="Le document traduit en français.",
-    agent=agent,
-)
+    def crew(self) -> Crew:
+        of_agent = Agent(
+            role="Assistant OF interne",
+            goal=(
+                "Répondre précisément aux questions sur un OF en s'appuyant uniquement "
+                "sur le contexte fourni (données internes issues du CSV)."
+            ),
+            backstory=(
+                "Assistant interne spécialisé dans la lecture de données de suivi OF. "
+                "Il ne fabrique pas d'informations en dehors du contexte fourni."
+            ),
+            verbose=True,
+            allow_delegation=False,
+            llm=self.llm,
+        )
 
-crew = Crew(
-    agents=[agent, agent_traducteur],
-    tasks=[task],
-    verbose=True,
-    process=Process.sequential,
-   
-)
+        of_task = Task(
+            description=(
+                "Réponds à la question utilisateur: {question} en te basant uniquement "
+                "sur le contexte de l'OF suivant: {of_context}. Si une information est "
+                "absente du contexte, indique-le clairement. Fournis une réponse courte, "
+                "claire et actionnable. Réponds en français uniquement."
+            ),
+            expected_output=(
+                "Une réponse structurée et fidèle aux données du contexte, listant les "
+                "champs clés (date, statuts, remarques, référence, conformité) si présents."
+            ),
+            agent=of_agent,
+        )
 
-result = crew.kickoff()
+        return Crew(
+            agents=[of_agent],
+            tasks=[of_task],
+            verbose=True,
+            process=Process.sequential,
+        )

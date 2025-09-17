@@ -1,0 +1,22 @@
+{
+  "csv_url": "http://10.129.102.17/infoposte/ecransTXT/tdbplacard.csv",
+  "mapping": {
+    "separator": ";",
+    "encoding": "utf-8",
+    "has_header": false,
+    "columns": [
+      { "index": 0, "key": "of" },
+      { "index": 1, "key": "date" },
+      { "index": 2, "key": "status1" },
+      { "index": 3, "key": "status2" },
+      { "index": 4, "key": "status3" },
+      { "index": 5, "key": "status4" },
+      { "index": 6, "key": "remark" },
+      { "index": 7, "key": "reference" },
+      { "index": 8, "key": "compliant" }
+    ],
+    "date_fields": ["date"],
+    "date_format": "%d/%m/%Y"
+  }
+}
+
