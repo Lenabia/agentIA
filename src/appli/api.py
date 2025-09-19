@@ -1,68 +1,70 @@
+# api.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Dict, Optional
-import logging
+from crewai import LLM
+from dotenv import load_dotenv
+import os, json
 
-from appli.crew import Appli  # logique métier/agent
+# ---------------- Init ----------------
+load_dotenv()
+app = FastAPI(title="OF Chatbot API (LLM direct)")
 
-# --- Application FastAPI ---
-app = FastAPI(title="OF Chatbot API (POST minimal)", version="0.2.3")
-
-# --- CORS : suffisant pour appels front simples (adapter en prod) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # en prod : lister vos domaines
-    allow_credentials=False,    # True => pas de "*" ; exige origines explicites
+    allow_origins=["*"],          # ⚠️ restreindre en prod
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# --- Logging simple ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("appli.api")
+MODEL = os.getenv("MODEL", "ollama/gemma3:1b")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0"))
+llm = LLM(model=MODEL, temperature=TEMPERATURE)
 
-# --- Instance unique de l'agent et de la crew (évite de recréer à chaque requête) ---
-appli = Appli()
-try:
-    appli_crew: Optional[object] = appli.crew()
-except Exception as exc:
-    # Si l'init échoue au démarrage (ex: LLM indisponible), on retentera à la 1ʳᵉ requête
-    logger.warning("Initialisation de la crew échouée: %s", exc)
-    appli_crew = None
-
-# --- Schéma d'entrée : valide le JSON reçu ---
+# ------------- Schémas I/O -------------
 class AskIn(BaseModel):
-    question: str = Field(..., min_length=1, max_length=2000, description="Question utilisateur")
-    data: str = Field(..., min_length=1, max_length=10000, description="Contexte pour l'agent")
+    question: str = Field(..., min_length=1, description="Question utilisateur")
+    data: dict = Field(..., description="Contexte OF au format JSON (clé/valeur)")
 
-# --- Schéma de sortie : réponse proprement typée ---
 class AskOut(BaseModel):
     answer: str
 
-# --- Healthcheck simple ---
+# ------------- Utils (facultatif) -------------
+def _build_prompt(question: str, data: dict) -> str:
+    """
+    Prompt court, cadré :
+      - répond UNIQUEMENT depuis le JSON fourni,
+      - pas d'invention ni d'interprétation hors des clés/valeurs,
+      - français, 1–2 phrases max,
+      - fallback clair si info absente.
+    """
+    context = json.dumps(data, ensure_ascii=False)
+    return (
+        "Tu es un assistant qui répond UNIQUEMENT à partir du JSON fourni.\n"
+        "Règles:\n"
+        "- Français uniquement, 1–2 phrases maximum, ton neutre.\n"
+        "- Utilise STRICTEMENT les clés/valeurs du JSON (aucun synonyme inventé, aucune déduction externe).\n"
+        "- Si l'information demandée n'est pas présente dans le JSON, réponds EXACTEMENT : "
+        "\"Information non trouvée dans le contexte.\"\n\n"
+        f"JSON:\n{context}\n\n"
+        f"Question:\n{question}\n"
+    )
+
+# ------------- Endpoints -------------
 @app.get("/health")
-def health() -> Dict[str, str]:
+def health():
     return {"status": "ok"}
 
-# --- Endpoint principal : POST /ask ---
 @app.post("/ask", response_model=AskOut)
 def ask(payload: AskIn) -> AskOut:
-    """
-    Reçoit {"question": "...", "data": "..."} ; déclenche l'agent ; renvoie {"answer": "..."}.
-    """
+    prompt = _build_prompt(payload.question, payload.data)
     try:
-        # Initialise une fois si nécessaire
-        global appli_crew
-        if appli_crew is None:
-            appli_crew = appli.crew()
-
-        # Appel à la logique agent
-        result = appli_crew.kickoff(inputs={"question": payload.question, "of_context": payload.data})
+        raw = llm.call(prompt)
     except Exception as exc:
-        # Journalise l'erreur côté serveur, renvoie un message générique au client
-        logger.exception("Erreur lors de l'exécution de l'agent: %s", exc)
-        raise HTTPException(status_code=500, detail="Erreur agent")
+        raise HTTPException(status_code=500, detail=f"Erreur LLM: {exc}")
 
-    # Normalise la sortie en string et garantit le contrat de réponse
-    return AskOut(answer=str(result) if result is not None else "")
+    answer = (str(raw).strip() if raw is not None else "")
+    # garde-fou minimal si le modèle renvoie vide
+    if not answer:
+        answer = "Information non trouvée dans le contexte."
+    return AskOut(answer=answer)

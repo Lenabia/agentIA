@@ -1,4 +1,7 @@
 {
-  "question": "Donne-moi seulement les infos pour vitrage et panneau pour l'OF 36LJ1206  ",
-  "data": "{\n\"numero_OF\": \"36LJ1206\",\n\"DateMAD\": \"12/09/2025\",\n\"Profil\": \"pas de profil\",\n\"Rail\": \"pas de rail\",\n\"vitrage\": \"pas de vitrage \",\n\"Panneau\": \"Découpé\"\n}\n"
+  "question": "Quel est l'état des vitrages pour l'OF 36LJ1206 ?",
+  "data": {
+    "numero_OF": "36LJ1206",
+    "vitrage": "vitrage reçus"
+  }
 }
